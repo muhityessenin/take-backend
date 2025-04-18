@@ -5,6 +5,7 @@ type Item struct {
 	Name       string      `json:"name"`
 	PartNumber string      `json:"partNumber"`
 	Brand      string      `json:"brand"`
+	Model      string      `json:"model"`
 	Stock      int         `json:"stock"`
 	Price      int         `json:"price"`
 	Images     []ItemImage `gorm:"foreignKey:ItemID" json:"images"`
