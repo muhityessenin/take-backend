@@ -8,7 +8,7 @@ type Item struct {
 	Model          string      `json:"model"`
 	Stock          int         `json:"stock"`
 	Price          int         `json:"price"`
-	WholesalePrice int         `json:"wholesalePrice"`
+	WholesalePrice int         `gorm:"column:wholesale_price" json:"wholesalePrice"`
 	Images         []ItemImage `gorm:"foreignKey:ItemID" json:"images"`
 	Sales          []Sale      `gorm:"foreignKey:ItemID"`
 }
