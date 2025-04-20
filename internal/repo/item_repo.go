@@ -143,6 +143,7 @@ func (r *ItemRepository) UpdateItem(id uint, updates map[string]interface{}) (*m
 	}
 
 	if err := r.DB.Model(&item).Updates(updates).Error; err != nil {
+		fmt.Println("❌ GORM update error:", err)
 		return nil, err
 	}
 

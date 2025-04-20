@@ -131,7 +131,7 @@ func (h *ItemHandler) UpdateItem(c *gin.Context) {
 
 	updatedItem, err := h.Repo.UpdateItem(uint(id), updates)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при обновлении товара"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
