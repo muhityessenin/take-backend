@@ -12,3 +12,13 @@ type Item struct {
 	Images         []ItemImage `gorm:"foreignKey:ItemID" json:"images"`
 	Sales          []Sale      `gorm:"foreignKey:ItemID"`
 }
+
+var allowedFields = map[string]string{
+	"name":           "name",
+	"price":          "price",
+	"stock":          "stock",
+	"brand":          "brand",
+	"model":          "model",
+	"partNumber":     "part_number",
+	"wholesalePrice": "wholesale_price", // 👈 вот ключ
+}

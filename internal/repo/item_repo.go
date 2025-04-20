@@ -11,6 +11,16 @@ type ItemRepository struct {
 	DB *gorm.DB
 }
 
+var allowedFields = map[string]string{
+	"name":           "name",
+	"price":          "price",
+	"stock":          "stock",
+	"brand":          "brand",
+	"model":          "model",
+	"partNumber":     "part_number",
+	"wholesalePrice": "wholesale_price", // 👈 вот ключ
+}
+
 func NewItemRepository(db *gorm.DB) *ItemRepository {
 	return &ItemRepository{DB: db}
 }
@@ -142,7 +152,15 @@ func (r *ItemRepository) UpdateItem(id uint, updates map[string]interface{}) (*m
 		return nil, err
 	}
 
-	if err := r.DB.Model(&item).Updates(updates).Error; err != nil {
+	// Преобразуем JSON-ключи → реальные SQL-поля
+	filtered := make(map[string]interface{})
+	for key, val := range updates {
+		if dbCol, ok := allowedFields[key]; ok {
+			filtered[dbCol] = val
+		}
+	}
+
+	if err := r.DB.Model(&item).Updates(filtered).Error; err != nil {
 		fmt.Println("❌ GORM update error:", err)
 		return nil, err
 	}
