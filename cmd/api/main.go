@@ -35,6 +35,7 @@ func main() {
 		api.GET("/sales/today", h.GetTodaySales)
 		api.GET("/sales/top5", h.GetTop5BestSellers)
 		api.GET("/sales", h.GetSales)
+		api.PATCH("/items/:id", h.UpdateItem)
 	}
 
 	log.Println("🚀 Server running at :8080")

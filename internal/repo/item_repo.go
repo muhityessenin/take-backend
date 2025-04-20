@@ -134,3 +134,17 @@ func (r *ItemRepository) GetSalesByBrand(brand string) ([]model.Sale, error) {
 		Find(&sales).Error
 	return sales, err
 }
+
+func (r *ItemRepository) UpdateItem(id uint, updates map[string]interface{}) (*model.Item, error) {
+	var item model.Item
+
+	if err := r.DB.First(&item, id).Error; err != nil {
+		return nil, err
+	}
+
+	if err := r.DB.Model(&item).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	return &item, nil
+}

@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"net/http"
+	"strconv"
 	"warehouse-backend/internal/model"
 	"warehouse-backend/internal/repo"
 )
@@ -111,4 +112,28 @@ func (h *ItemHandler) GetSales(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, sales)
+}
+
+func (h *ItemHandler) UpdateItem(c *gin.Context) {
+	idParam := c.Param("id")
+	var updates map[string]interface{}
+
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
+		return
+	}
+
+	id, err := strconv.ParseUint(idParam, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID"})
+		return
+	}
+
+	updatedItem, err := h.Repo.UpdateItem(uint(id), updates)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при обновлении товара"})
+		return
+	}
+
+	c.JSON(http.StatusOK, updatedItem)
 }
