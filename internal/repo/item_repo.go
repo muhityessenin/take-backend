@@ -18,7 +18,7 @@ var allowedFields = map[string]string{
 	"brand":          "brand",
 	"model":          "model",
 	"partNumber":     "part_number",
-	"wholesalePrice": "wholesale_price", // 👈 вот ключ
+	"wholesalePrice": "wholesale_price",
 }
 
 func NewItemRepository(db *gorm.DB) *ItemRepository {
@@ -152,7 +152,6 @@ func (r *ItemRepository) UpdateItem(id uint, updates map[string]interface{}) (*m
 		return nil, err
 	}
 
-	// Преобразуем JSON-ключи → реальные SQL-поля
 	filtered := make(map[string]interface{})
 	for key, val := range updates {
 		if dbCol, ok := allowedFields[key]; ok {
