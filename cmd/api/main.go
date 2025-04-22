@@ -5,12 +5,14 @@ import (
 	"log"
 	"warehouse-backend/internal/db"
 	"warehouse-backend/internal/handler"
+	"warehouse-backend/internal/middleware"
+	"warehouse-backend/internal/repo"
+	"warehouse-backend/internal/service"
 )
 
 func main() {
 	r := gin.Default()
 
-	// CORS
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
@@ -21,21 +23,36 @@ func main() {
 		}
 		c.Next()
 	})
-
 	database := db.Connect()
 	db.AutoMigrate(database)
 
-	h := handler.NewItemHandler(database)
+	itemHandler := handler.NewItemHandler(database)
+
+	userRepo := repo.NewUserRepo(database)
+	userService := service.NewUserService(userRepo)
+	authHandler := handler.NewAuthHandler(userService)
+
+	jwtService := service.NewJWTService()
 
 	api := r.Group("/api")
 	{
-		api.GET("/items", h.GetItems)
-		api.POST("/items", h.AddItem)
-		api.POST("/sale", h.MakeSale)
-		api.GET("/sales/today", h.GetTodaySales)
-		api.GET("/sales/top5", h.GetTop5BestSellers)
-		api.GET("/sales", h.GetSales)
-		api.PATCH("/items/:id", h.UpdateItem)
+		// Public
+		api.POST("/register", authHandler.Register)
+		api.POST("/login", authHandler.Login)
+
+		// Protected
+		protected := api.Group("/")
+		protected.Use(middleware.AuthMiddleware(jwtService))
+		{
+			protected.GET("/items", itemHandler.GetItems)
+			protected.POST("/items", itemHandler.AddItem)
+			protected.PATCH("/items/:id", itemHandler.UpdateItem)
+
+			protected.POST("/sale", itemHandler.MakeSale)
+			protected.GET("/sales/today", itemHandler.GetTodaySales)
+			protected.GET("/sales/top5", itemHandler.GetTop5BestSellers)
+			protected.GET("/sales", itemHandler.GetSales)
+		}
 	}
 
 	log.Println("🚀 Server running at :8080")

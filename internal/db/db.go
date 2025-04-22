@@ -34,6 +34,7 @@ func AutoMigrate(db *gorm.DB) {
 		&model.Item{},
 		&model.ItemImage{},
 		&model.Sale{},
+		&model.User{},
 	)
 	if err != nil {
 		log.Fatal("❌ Migration error: ", err)
