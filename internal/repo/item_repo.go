@@ -148,21 +148,28 @@ func (r *ItemRepository) GetSalesByBrand(brand string) ([]model.Sale, error) {
 func (r *ItemRepository) UpdateItem(id uint, updates map[string]interface{}) (*model.Item, error) {
 	var item model.Item
 
-	if err := r.DB.First(&item, id).Error; err != nil {
+	// Найти товар
+	if err := r.DB.Preload("Images").First(&item, id).Error; err != nil {
 		return nil, err
 	}
 
-	filtered := make(map[string]interface{})
-	for key, val := range updates {
-		if dbCol, ok := allowedFields[key]; ok {
-			filtered[dbCol] = val
+	// Если есть изображения — сохранить их отдельно
+	if imgs, ok := updates["images"]; ok {
+		if imageList, ok := imgs.([]model.ItemImage); ok {
+			for _, img := range imageList {
+				img.ItemID = item.ID
+				r.DB.Create(&img)
+			}
 		}
+		delete(updates, "images") // чтобы GORM не ругался на []struct
 	}
 
-	if err := r.DB.Model(&item).Updates(filtered).Error; err != nil {
-		fmt.Println("❌ GORM update error:", err)
+	// Обновить остальные поля
+	if err := r.DB.Model(&item).Updates(updates).Error; err != nil {
 		return nil, err
 	}
 
+	// Вернуть с изображениями
+	r.DB.Preload("Images").First(&item, id)
 	return &item, nil
 }

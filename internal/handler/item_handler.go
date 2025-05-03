@@ -1,10 +1,16 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"mime/multipart"
+	"net/http"
+	_ "os"
+	"strconv"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"net/http"
-	"strconv"
 	"warehouse-backend/internal/model"
 	"warehouse-backend/internal/repo"
 )
@@ -19,12 +25,68 @@ func NewItemHandler(db *gorm.DB) *ItemHandler {
 	}
 }
 
-func (h *ItemHandler) AddItem(c *gin.Context) {
-	var item model.Item
-	if err := c.ShouldBindJSON(&item); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+func uploadToCloudflare(file multipart.File, filename string) (string, error) {
+	var b bytes.Buffer
+	writer := multipart.NewWriter(&b)
+	part, _ := writer.CreateFormFile("file", filename)
+	io.Copy(part, file)
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/images/v1", &b)
+	req.Header.Set("Authorization", "Bearer YOUR_API_TOKEN")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
 	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Success bool `json:"success"`
+		Result  struct {
+			Variants []string `json:"variants"`
+		} `json:"result"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if !result.Success || len(result.Result.Variants) == 0 {
+		return "", err
+	}
+
+	return result.Result.Variants[0], nil
+}
+
+func (h *ItemHandler) AddItem(c *gin.Context) {
+	name := c.PostForm("name")
+	partNumber := c.PostForm("partNumber")
+	brand := c.PostForm("brand")
+	modelName := c.PostForm("model")
+	stock, _ := strconv.Atoi(c.PostForm("stock"))
+	price, _ := strconv.Atoi(c.PostForm("price"))
+	wholesalePrice, _ := strconv.Atoi(c.PostForm("wholesalePrice"))
+
+	item := model.Item{
+		Name:           name,
+		PartNumber:     partNumber,
+		Brand:          brand,
+		Model:          modelName,
+		Stock:          stock,
+		Price:          price,
+		WholesalePrice: wholesalePrice,
+	}
+
+	form, _ := c.MultipartForm()
+	files := form.File["images"]
+
+	for _, fileHeader := range files {
+		file, _ := fileHeader.Open()
+		defer file.Close()
+		url, err := uploadToCloudflare(file, fileHeader.Filename)
+		if err == nil {
+			item.Images = append(item.Images, model.ItemImage{URL: url})
+		}
+	}
+
 	if err := h.Repo.AddItem(&item); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not add item"})
 		return
@@ -74,6 +136,7 @@ func (h *ItemHandler) MakeSale(c *gin.Context) {
 
 	c.JSON(http.StatusOK, sale)
 }
+
 func (h *ItemHandler) GetTodaySales(c *gin.Context) {
 	sales, err := h.Repo.GetTodaySales()
 	if err != nil {
@@ -116,24 +179,39 @@ func (h *ItemHandler) GetSales(c *gin.Context) {
 
 func (h *ItemHandler) UpdateItem(c *gin.Context) {
 	idParam := c.Param("id")
-	var updates map[string]interface{}
-
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат данных"})
-		return
-	}
-
 	id, err := strconv.ParseUint(idParam, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID"})
 		return
 	}
 
-	updatedItem, err := h.Repo.UpdateItem(uint(id), updates)
+	item := make(map[string]interface{})
+	if err := c.Bind(&item); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid format"})
+		return
+	}
+
+	form, _ := c.MultipartForm()
+	files := form.File["images"]
+	var images []model.ItemImage
+
+	for _, fileHeader := range files {
+		file, _ := fileHeader.Open()
+		defer file.Close()
+		url, err := uploadToCloudflare(file, fileHeader.Filename)
+		if err == nil {
+			images = append(images, model.ItemImage{URL: url})
+		}
+	}
+
+	if len(images) > 0 {
+		item["images"] = images
+	}
+
+	updatedItem, err := h.Repo.UpdateItem(uint(id), item)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, updatedItem)
 }
