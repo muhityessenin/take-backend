@@ -32,8 +32,8 @@ func uploadToCloudflare(file multipart.File, filename string) (string, error) {
 	io.Copy(part, file)
 	writer.Close()
 
-	req, _ := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/images/v1", &b)
-	req.Header.Set("Authorization", "Bearer YOUR_API_TOKEN")
+	req, _ := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/accounts/e39dcb277e03d5eacfdfad578343290d/images/v1", &b)
+	req.Header.Set("Authorization", "Bearer rXCFWWrgaTkLEcALSY7gYr3L-Ir06X8gsdYH0INE")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := http.DefaultClient.Do(req)
