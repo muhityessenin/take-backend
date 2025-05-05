@@ -26,7 +26,7 @@ func NewItemRepository(db *gorm.DB) *ItemRepository {
 }
 
 func (r *ItemRepository) AddItem(item *model.Item) error {
-	return r.DB.Create(item).Error
+	return r.DB.Session(&gorm.Session{FullSaveAssociations: true}).Create(item).Error
 }
 
 func (r *ItemRepository) UpdateStock(id uint, quantity int) (*model.Item, error) {

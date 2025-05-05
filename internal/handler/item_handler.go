@@ -3,7 +3,9 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	_ "os"
@@ -33,7 +35,7 @@ func uploadToCloudflare(file multipart.File, filename string) (string, error) {
 	writer.Close()
 
 	req, _ := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/accounts/e39dcb277e03d5eacfdfad578343290d/images/v1", &b)
-	req.Header.Set("Authorization", "Bearer rXCFWWrgaTkLEcALSY7gYr3L-Ir06X8gsdYH0INE")
+	req.Header.Set("Authorization", "Bearer I5csC_rU3Su8IyluZ4g0Ruy1OR8Eb5r0GluC6SnW")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := http.DefaultClient.Do(req)
@@ -48,11 +50,22 @@ func uploadToCloudflare(file multipart.File, filename string) (string, error) {
 			Variants []string `json:"variants"`
 		} `json:"result"`
 	}
-	json.NewDecoder(resp.Body).Decode(&result)
-	if !result.Success || len(result.Result.Variants) == 0 {
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	log.Println("Cloudflare response body:", string(bodyBytes))
+
+	err = json.Unmarshal(bodyBytes, &result)
+	if err != nil {
+		log.Println("Ошибка при парсинге JSON:", err)
 		return "", err
 	}
 
+	if !result.Success || len(result.Result.Variants) == 0 {
+		log.Println("Upload to Cloudflare failed or empty variants:", result)
+		return "", errors.New("cloudflare upload failed")
+	}
+
+	log.Println("Cloudflare image uploaded:", result.Result.Variants[0])
 	return result.Result.Variants[0], nil
 }
 
@@ -80,11 +93,14 @@ func (h *ItemHandler) AddItem(c *gin.Context) {
 
 	for _, fileHeader := range files {
 		file, _ := fileHeader.Open()
-		defer file.Close()
 		url, err := uploadToCloudflare(file, fileHeader.Filename)
-		if err == nil {
+		file.Close()
+		if err != nil {
+			log.Println("Ошибка при загрузке фото:", err)
+		} else {
 			item.Images = append(item.Images, model.ItemImage{URL: url})
 		}
+
 	}
 
 	if err := h.Repo.AddItem(&item); err != nil {
