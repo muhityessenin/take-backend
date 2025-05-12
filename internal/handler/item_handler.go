@@ -201,12 +201,38 @@ func (h *ItemHandler) UpdateItem(c *gin.Context) {
 		return
 	}
 
-	item := make(map[string]interface{})
-	if err := c.Bind(&item); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid format"})
-		return
+	// Ручной разбор формы, потому что multipart/form-data
+	updates := make(map[string]interface{})
+
+	if name := c.PostForm("name"); name != "" {
+		updates["name"] = name
+	}
+	if partNumber := c.PostForm("partNumber"); partNumber != "" {
+		updates["part_number"] = partNumber
+	}
+	if brand := c.PostForm("brand"); brand != "" {
+		updates["brand"] = brand
+	}
+	if modelName := c.PostForm("model"); modelName != "" {
+		updates["model"] = modelName
+	}
+	if stockStr := c.PostForm("stock"); stockStr != "" {
+		if stock, err := strconv.Atoi(stockStr); err == nil {
+			updates["stock"] = stock
+		}
+	}
+	if priceStr := c.PostForm("price"); priceStr != "" {
+		if price, err := strconv.Atoi(priceStr); err == nil {
+			updates["price"] = price
+		}
+	}
+	if wholesaleStr := c.PostForm("wholesalePrice"); wholesaleStr != "" {
+		if wholesale, err := strconv.Atoi(wholesaleStr); err == nil {
+			updates["wholesale_price"] = wholesale
+		}
 	}
 
+	// Обработка изображений
 	form, _ := c.MultipartForm()
 	files := form.File["images"]
 	var images []model.ItemImage
@@ -221,13 +247,15 @@ func (h *ItemHandler) UpdateItem(c *gin.Context) {
 	}
 
 	if len(images) > 0 {
-		item["images"] = images
+		updates["images"] = images
 	}
 
-	updatedItem, err := h.Repo.UpdateItem(uint(id), item)
+	// Обновление в репозитории
+	updatedItem, err := h.Repo.UpdateItem(uint(id), updates)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
 	c.JSON(http.StatusOK, updatedItem)
 }
