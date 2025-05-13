@@ -173,3 +173,9 @@ func (r *ItemRepository) UpdateItem(id uint, updates map[string]interface{}) (*m
 	r.DB.Preload("Images").First(&item, id)
 	return &item, nil
 }
+
+func (r *ItemRepository) GetAllSales() ([]model.Sale, error) {
+	var sales []model.Sale
+	err := r.DB.Preload("Item").Order("sold_at desc").Find(&sales).Error
+	return sales, err
+}

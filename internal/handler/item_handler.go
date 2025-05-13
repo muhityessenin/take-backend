@@ -182,7 +182,7 @@ func (h *ItemHandler) GetSales(c *gin.Context) {
 	if brand != "" {
 		sales, err = h.Repo.GetSalesByBrand(brand)
 	} else {
-		sales, err = h.Repo.GetTodaySales() // или можешь сделать GetAllSales()
+		sales, err = h.Repo.GetAllSales() // или можешь сделать GetAllSales()
 	}
 
 	if err != nil {
