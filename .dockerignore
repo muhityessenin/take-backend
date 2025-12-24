@@ -1,0 +1,13 @@
+bin
+obj
+*.exe
+*.test
+*.out
+*.log
+.git
+.idea
+vendor
+node_modules
+.DS_Store
+.env
+*.env

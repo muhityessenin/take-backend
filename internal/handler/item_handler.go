@@ -1,21 +1,38 @@
 package handler
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
+	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
-	_ "os"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
+
+	"warehouse-backend/internal/model"
+	"warehouse-backend/internal/repo"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
-	"warehouse-backend/internal/model"
-	"warehouse-backend/internal/repo"
 )
+
+const (
+	maxImageSize = 30 << 20 // 30 MB
+)
+
+var allowedExtensions = map[string]bool{
+	".jpg":  true,
+	".jpeg": true,
+	".png":  true,
+	".webp": true,
+
+	// iPhone
+	".heic": true,
+	".heif": true,
+}
 
 type ItemHandler struct {
 	Repo *repo.ItemRepository
@@ -26,49 +43,49 @@ func NewItemHandler(db *gorm.DB) *ItemHandler {
 		Repo: repo.NewItemRepository(db),
 	}
 }
-
-func uploadToCloudflare(file multipart.File, filename string) (string, error) {
-	var b bytes.Buffer
-	writer := multipart.NewWriter(&b)
-	part, _ := writer.CreateFormFile("file", filename)
-	io.Copy(part, file)
-	writer.Close()
-
-	req, _ := http.NewRequest("POST", "https://api.cloudflare.com/client/v4/accounts/e39dcb277e03d5eacfdfad578343290d/images/v1", &b)
-	req.Header.Set("Authorization", "Bearer I5csC_rU3Su8IyluZ4g0Ruy1OR8Eb5r0GluC6SnW")
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Success bool `json:"success"`
-		Result  struct {
-			Variants []string `json:"variants"`
-		} `json:"result"`
+func validateImage(fileHeader *multipart.FileHeader) error {
+	if fileHeader.Size > maxImageSize {
+		return fmt.Errorf("file too large (max 30MB)")
 	}
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	log.Println("Cloudflare response body:", string(bodyBytes))
-
-	err = json.Unmarshal(bodyBytes, &result)
-	if err != nil {
-		log.Println("Ошибка при парсинге JSON:", err)
-		return "", err
+	ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+	if !allowedExtensions[ext] {
+		return fmt.Errorf("unsupported file type: %s", ext)
 	}
 
-	if !result.Success || len(result.Result.Variants) == 0 {
-		log.Println("Upload to Cloudflare failed or empty variants:", result)
-		return "", errors.New("cloudflare upload failed")
-	}
-
-	log.Println("Cloudflare image uploaded:", result.Result.Variants[0])
-	return result.Result.Variants[0], nil
+	return nil
 }
 
+func saveImageLocally(
+	file multipart.File,
+	filename string,
+) (string, error) {
+
+	// создаём директорию если нет
+	dir := "uploads/items"
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+
+	// безопасное имя файла
+	ext := filepath.Ext(filename)
+	newName := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+
+	fullPath := filepath.Join(dir, newName)
+
+	out, err := os.Create(fullPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, file); err != nil {
+		return "", err
+	}
+
+	// то, что сохраняем в БД
+	return "/" + fullPath, nil
+}
 func (h *ItemHandler) AddItem(c *gin.Context) {
 	name := c.PostForm("name")
 	partNumber := c.PostForm("partNumber")
@@ -88,26 +105,53 @@ func (h *ItemHandler) AddItem(c *gin.Context) {
 		WholesalePrice: wholesalePrice,
 	}
 
-	form, _ := c.MultipartForm()
-	files := form.File["images"]
+	form, err := c.MultipartForm()
+	if err == nil {
+		files := form.File["images"]
 
-	for _, fileHeader := range files {
-		file, _ := fileHeader.Open()
-		url, err := uploadToCloudflare(file, fileHeader.Filename)
-		file.Close()
-		if err != nil {
-			log.Println("Ошибка при загрузке фото:", err)
-		} else {
-			item.Images = append(item.Images, model.ItemImage{URL: url})
+		for _, fileHeader := range files {
+
+			if err := validateImage(fileHeader); err != nil {
+				log.Println("Image skipped:", err)
+				continue
+			}
+
+			file, err := fileHeader.Open()
+			if err != nil {
+				continue
+			}
+
+			url, err := saveImageLocally(file, fileHeader.Filename)
+			file.Close()
+
+			if err != nil {
+				log.Println("Save error:", err)
+				continue
+			}
+
+			item.Images = append(item.Images, model.ItemImage{
+				URL: url,
+			})
 		}
-
 	}
 
 	if err := h.Repo.AddItem(&item); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not add item"})
 		return
 	}
+
 	c.JSON(http.StatusOK, item)
+}
+func deleteLocalImage(path string) {
+	if path == "" {
+		return
+	}
+
+	// path в БД вида /uploads/items/xxx.jpg
+	fullPath := "." + path
+	if err := os.Remove(fullPath); err != nil {
+		log.Println("Failed to delete image:", fullPath, err)
+	}
 }
 
 func (h *ItemHandler) GetItems(c *gin.Context) {
@@ -238,9 +282,14 @@ func (h *ItemHandler) UpdateItem(c *gin.Context) {
 	var images []model.ItemImage
 
 	for _, fileHeader := range files {
-		file, _ := fileHeader.Open()
-		defer file.Close()
-		url, err := uploadToCloudflare(file, fileHeader.Filename)
+		file, err := fileHeader.Open()
+		if err != nil {
+			continue
+		}
+
+		url, err := saveImageLocally(file, fileHeader.Filename)
+		file.Close()
+
 		if err == nil {
 			images = append(images, model.ItemImage{URL: url})
 		}

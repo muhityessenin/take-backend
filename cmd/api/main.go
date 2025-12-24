@@ -1,13 +1,14 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
 	"log"
 	"warehouse-backend/internal/db"
 	"warehouse-backend/internal/handler"
 	"warehouse-backend/internal/middleware"
 	"warehouse-backend/internal/repo"
 	"warehouse-backend/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 	})
 	database := db.Connect()
 	db.AutoMigrate(database)
-
+	r.Static("/uploads", "./uploads")
 	itemHandler := handler.NewItemHandler(database)
 
 	userRepo := repo.NewUserRepo(database)
