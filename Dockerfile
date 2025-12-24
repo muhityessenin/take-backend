@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 RUN apk add --no-cache git
 
@@ -14,6 +14,7 @@ COPY . .
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /app/bin/app ./cmd/api
 
+
 FROM alpine:3.18
 RUN apk add --no-cache ca-certificates
 
@@ -21,7 +22,6 @@ WORKDIR /app
 COPY --from=builder /app/bin/app /app/app
 
 EXPOSE 8080
-
 ENV GIN_MODE=release
 
 CMD ["/app/app"]
